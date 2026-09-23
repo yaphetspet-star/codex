@@ -124,13 +124,11 @@ export class WebviewHarness {
     await this.send({ type: 'agentTree', rootThreadId, nodes });
   }
 
-  /** Declares the engine's multi-agent runtime, as `probeMultiAgent` does on startup. */
+  /** Reports the multi-agent runtime, as `activateMultiAgent` does on startup. */
   async publishCapability(overrides: Record<string, unknown> = {}): Promise<void> {
     await this.send({
       type: 'multiAgent',
-      version: 'v2',
-      featureV2Enabled: true,
-      collabEnabled: true,
+      active: true,
       modelDeclaredVersion: 'v2',
       nestedSpawnSupported: true,
       ...overrides,

@@ -27,11 +27,9 @@ interface Tab {
 
 type PanelView = 'none' | 'settings' | 'models';
 
-/** Multi-agent runtime the engine reported; the orchestration view requires v2. */
+/** Outcome of switching the engine to multi-agent v2, which this view requires. */
 interface MultiAgentState {
-  version: MultiAgentVersion;
-  featureV2Enabled: boolean;
-  collabEnabled: boolean;
+  active: boolean;
   modelDeclaredVersion: MultiAgentVersion | null;
   nestedSpawnSupported: boolean;
 }
@@ -190,9 +188,7 @@ export default function App() {
           break;
         case 'multiAgent':
           setMultiAgent({
-            version: m.version,
-            featureV2Enabled: m.featureV2Enabled,
-            collabEnabled: m.collabEnabled,
+            active: m.active,
             modelDeclaredVersion: m.modelDeclaredVersion,
             nestedSpawnSupported: m.nestedSpawnSupported,
           });
@@ -319,10 +315,10 @@ export default function App() {
     );
   }, []);
 
-  // A non-v2 engine never emits agent activity, so the block that carries the upgrade
-  // notice has to be created from the capability probe rather than from the agent tree.
+  // Without v2 no agent activity ever arrives, so the block that carries the warning has
+  // to be created from the capability report rather than from the agent tree.
   useEffect(() => {
-    if (activeId && multiAgent && multiAgent.version !== 'v2') {
+    if (activeId && multiAgent && !multiAgent.active) {
       ensureAgentsBlock(activeId);
     }
   }, [activeId, multiAgent, ensureAgentsBlock]);
@@ -428,17 +424,16 @@ export default function App() {
           </div>
         );
       case 'agents': {
-        // The engine notice has to win over the empty check: on a non-v2 engine no agent
-        // ever arrives, and returning null would leave the panel silently blank.
-        if (multiAgent && multiAgent.version !== 'v2') {
+        // This has to win over the empty check: without v2 no agent ever arrives, and
+        // returning null would leave the panel silently blank.
+        if (multiAgent && !multiAgent.active) {
           return (
             <div key={b.id} className="agent-list">
               <div className="agent-notice">
                 <div>
-                  当前引擎使用 multi-agent {multiAgent.version}，编排视图需要 v2 才能展示子 agent 的
-                  详细过程。
+                  无法启用 multi-agent v2，子 agent 不会出现。
+                  请在 config.toml 中设置 features.multi_agent_v2 = true，或升级 codex。
                 </div>
-                <button onClick={() => post({ type: 'enableMultiAgentV2' })}>为本次会话启用 v2</button>
               </div>
             </div>
           );

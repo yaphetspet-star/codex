@@ -2,18 +2,15 @@ import type { ExperimentalFeatureListResponse } from '../generated/v2/Experiment
 import type { ModelListResponse } from '../generated/v2/ModelListResponse';
 import type { MultiAgentVersion } from '../generated/v2/MultiAgentVersion';
 
-/** Canonical feature keys, matching `codex-rs/features/src/lib.rs`. */
+/** Canonical feature key, matching `codex-rs/features/src/lib.rs`. */
 const FEATURE_MULTI_AGENT_V2 = 'multi_agent_v2';
-const FEATURE_COLLAB = 'multi_agent';
 
 /** Issues a JSON-RPC request against the app-server. */
 export type Request = (method: string, params?: unknown, timeoutMs?: number) => Promise<unknown>;
 
 export interface MultiAgentCapability {
-  /** Version the engine will actually use for new turns. */
-  version: MultiAgentVersion;
-  featureV2Enabled: boolean;
-  collabEnabled: boolean;
+  /** Whether the engine will run multi-agent v2 for this session. */
+  active: boolean;
   /** Version declared by the selected model, when the catalog reports one. */
   modelDeclaredVersion: MultiAgentVersion | null;
   /**
@@ -28,18 +25,15 @@ export interface MultiAgentCapability {
 }
 
 /**
- * Resolves the multi-agent runtime the engine will use.
+ * Confirms the engine is running multi-agent v2 and reports what that bought.
  *
- * This mirrors `Config::multi_agent_version_for_model`: an enabled `multi_agent_v2`
- * feature wins outright, otherwise the model's declared version applies, and the
- * `multi_agent` feature provides the v1 fallback.
- *
- * One divergence: the engine also forces `disabled` when `agents_enabled` is false in
- * config.toml, but that field is not exposed over the config RPC, so it is not
- * considered here. It defaults to enabled, so the resolved version only differs for
- * users who explicitly turned agents off.
+ * The panel only speaks v2: its orchestration view is driven by `subAgentActivity` and
+ * the thread broadcasts, none of which v1 emits. v2 is requested when the app-server is
+ * spawned (see `REQUIRED_FEATURES`), because it is not one of the features the engine
+ * lets a client toggle at runtime. This checks the request actually took, since an older
+ * codex would simply not know the feature.
  */
-export async function detectMultiAgent(
+export async function checkMultiAgentV2(
   request: Request,
   selectedModel: string,
 ): Promise<MultiAgentCapability> {
@@ -47,41 +41,12 @@ export async function detectMultiAgent(
     listFeatures(request),
     declaredVersionForModel(request, selectedModel),
   ]);
-  const featureV2Enabled = features.get(FEATURE_MULTI_AGENT_V2) ?? false;
-  const collabEnabled = features.get(FEATURE_COLLAB) ?? false;
-
-  let version: MultiAgentVersion;
-  if (featureV2Enabled) {
-    version = 'v2';
-  } else if (modelDeclaredVersion) {
-    version = modelDeclaredVersion;
-  } else {
-    version = collabEnabled ? 'v1' : 'disabled';
-  }
-
+  const active = features.get(FEATURE_MULTI_AGENT_V2) ?? false;
   return {
-    version,
-    featureV2Enabled,
-    collabEnabled,
+    active,
     modelDeclaredVersion,
-    nestedSpawnSupported: version === 'v2' && modelDeclaredVersion === 'v2',
+    nestedSpawnSupported: active && modelDeclaredVersion === 'v2',
   };
-}
-
-/**
- * Turns on multi-agent v2 for the running app-server process.
- *
- * This is runtime-only and does not touch config.toml, so it is lost on restart.
- */
-export async function enableMultiAgentV2ForSession(request: Request): Promise<boolean> {
-  try {
-    const res = (await request('experimentalFeature/enablement/set', {
-      enablement: { [FEATURE_MULTI_AGENT_V2]: true },
-    })) as { enablement?: Record<string, boolean | undefined> };
-    return res?.enablement?.[FEATURE_MULTI_AGENT_V2] === true;
-  } catch {
-    return false;
-  }
 }
 
 async function listFeatures(request: Request): Promise<Map<string, boolean>> {

@@ -275,19 +275,15 @@ test('C10: a model without v2 is called out as single-level only', async ({ page
   await harness.screenshot('c10-degraded');
 });
 
-test('C10: a v1 engine offers the upgrade instead of the agent list', async ({ page }) => {
+test('C10: an engine that will not run v2 says so instead of staying blank', async ({ page }) => {
   const harness = await WebviewHarness.open(page);
   await harness.openThread(ROOT, '主会话');
+  // No agents are published: without v2 none would ever arrive, which is the whole point.
   await harness.publishCapability({
-    version: 'v1',
-    featureV2Enabled: false,
+    active: false,
     modelDeclaredVersion: 'v1',
     nestedSpawnSupported: false,
   });
-  await harness.publishAgents(ROOT, [agentNode('agent-1', ROOT, '/root/worker_1')]);
 
-  const notice = page.locator('.agent-notice');
-  await expect(notice).toContainText('multi-agent v1');
-  await notice.getByRole('button', { name: '为本次会话启用 v2' }).click();
-  expect(await harness.postedMessages()).toContainEqual({ type: 'enableMultiAgentV2' });
+  await expect(page.locator('.agent-notice')).toContainText('无法启用 multi-agent v2');
 });

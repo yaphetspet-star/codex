@@ -14,8 +14,7 @@ import { AgentRegistry } from './agents/registry';
 import { SubscriptionManager } from './agents/subscriptions';
 import type { ThreadItem } from './generated/v2/ThreadItem';
 import {
-  detectMultiAgent,
-  enableMultiAgentV2ForSession,
+  checkMultiAgentV2,
   type MultiAgentCapability,
 } from './protocol/capabilities';
 import { diffStat, patchChangeKind } from './protocol/items';
@@ -1144,27 +1143,28 @@ async function bootstrap() {
     if (!restored) {
       await startThread();
     }
-    await probeMultiAgent();
+    await reportMultiAgent();
   } catch (err) {
     post({ type: 'error', text: String(err) });
   }
 }
 
 /**
- * Report which multi-agent runtime the engine will use.
+ * Tells the webview whether the engine came up on multi-agent v2.
  *
- * The orchestration UI is built on v2 events, so the webview needs to tell apart
- * "no agents were spawned" from "v2 is not active and no agent events will ever arrive".
+ * The panel has no v1 rendering path, so a failure here is worth surfacing: it means no
+ * agent event will ever arrive and the orchestration view would otherwise stay blank.
  */
-async function probeMultiAgent() {
+async function reportMultiAgent() {
   if (!client) {
     return;
   }
   // The model the session actually runs decides whether nested spawning is available;
   // `pendingModel` is only the picker's default and is empty when config.toml supplies it.
   const model = openSessions.get(activeThreadId ?? '')?.model || pendingModel;
-  const capability = await detectMultiAgent(
-    (method, params, timeoutMs) => client!.request(method, params, timeoutMs),
+  const capability = await checkMultiAgentV2(
+    (method: string, params?: unknown, timeoutMs?: number) =>
+      client!.request(method, params, timeoutMs),
     model,
   );
   multiAgent = capability;
@@ -1199,22 +1199,6 @@ async function handleMessage(msg: any) {
             post({ type: 'error', text: String(err) });
           }
           break;
-        case 'enableMultiAgentV2': {
-          if (!client || multiAgent?.version === 'v2') {
-            return;
-          }
-          const ok = await enableMultiAgentV2ForSession((method, params, timeoutMs) =>
-            client!.request(method, params, timeoutMs),
-          );
-          post({
-            type: 'status',
-            text: ok
-              ? '已为当前 app-server 进程启用 multi-agent v2，下一轮对话生效'
-              : '启用 multi-agent v2 失败，请在 config.toml 中设置 features.multi_agent_v2 = true',
-          });
-          await probeMultiAgent();
-          break;
-        }
         case 'switchThread':
           activeThreadId = String(msg.threadId ?? '') || undefined;
           postAgentTree(activeThreadId);

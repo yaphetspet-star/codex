@@ -119,9 +119,7 @@ export type HostMessage =
   | { type: 'agentTree'; rootThreadId: string; nodes: AgentInfo[] }
   | {
       type: 'multiAgent';
-      version: MultiAgentVersion;
-      featureV2Enabled: boolean;
-      collabEnabled: boolean;
+      active: boolean;
       modelDeclaredVersion: MultiAgentVersion | null;
       nestedSpawnSupported: boolean;
     }

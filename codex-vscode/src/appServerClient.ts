@@ -58,6 +58,15 @@ export function findCodexBin(): string {
   return found[0];
 }
 
+/**
+ * Features the panel cannot work without, turned on for the process it spawns.
+ *
+ * The orchestration view is driven entirely by v2 events, so v1 would render nothing.
+ * This has to happen at spawn time: `multi_agent_v2` is not in the app-server's
+ * allowlist of runtime-settable features, so the enablement RPC silently ignores it.
+ */
+const REQUIRED_FEATURES = ['--enable', 'multi_agent_v2'];
+
 /** Minimal JSON-RPC client for `codex app-server --listen stdio://`. */
 export class AppServerClient {
   private proc: ChildProcessWithoutNullStreams;
@@ -75,7 +84,7 @@ export class AppServerClient {
   onExit: (code: number | null) => void = () => {};
 
   constructor(bin: string, cwd: string, extraEnv: Record<string, string> = {}) {
-    this.proc = spawn(bin, ['app-server', '--listen', 'stdio://'], {
+    this.proc = spawn(bin, ['app-server', '--listen', 'stdio://', ...REQUIRED_FEATURES], {
       cwd,
       env: { ...process.env, ...extraEnv },
       windowsHide: true,
