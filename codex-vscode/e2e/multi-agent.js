@@ -21,6 +21,8 @@ const {
 } = require('./harness');
 const { AgentRegistry } = require('../out/agents/registry');
 const { SubscriptionManager } = require('../out/agents/subscriptions');
+const { INITIAL_TURNS_PAGE, replayTurns, turnsToReplay } = require('../out/history/replay');
+const { diffStat, patchChangeKind } = require('../out/protocol/items');
 
 /**
  * Context markers, one per agent.
@@ -43,6 +45,7 @@ const MARK = {
   refocusChild: 'E2E-refocus-child',
   fanOutParent: 'E2E-fanout-parent',
   fanOutChild: 'E2E-fanout-child',
+  restoreParent: 'E2E-restore-parent',
 };
 
 /** Agents spawned together by the fan-out scenario. */
@@ -50,6 +53,9 @@ const FAN_OUT_NAMES = ['alpha', 'beta', 'gamma'];
 
 /** Long enough that an agent's turn is reliably still running while the test inspects it. */
 const HOLD_MS = 6000;
+
+/** Distinctive assistant text, so the restore scenario can find it in the replayed messages. */
+const RESTORED_ANSWER = 'the command finished and here is the answer';
 
 const SCRIPTS = {
   [MARK.basicsParent]: [
@@ -100,6 +106,8 @@ const SCRIPTS = {
     reply('r-fanout-done', 'all three delegated'),
   ],
   [MARK.fanOutChild]: [{ events: reply('r-fanout-c', 'child done'), delayMs: HOLD_MS }],
+
+  [MARK.restoreParent]: [reply('r-restore-1', RESTORED_ANSWER)],
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -532,9 +540,125 @@ async function scenarioFanOut({ client, events, checks }) {
   );
 }
 
+/**
+ * A resumed thread must come back with its transcript, not just its tab.
+ *
+ * `thread/resume` carries the history, and the restart path used to drop it, so the panel
+ * reopened onto an empty conversation. Nothing caught that because no test looked at what
+ * resume returns.
+ */
+async function scenarioRestore({ client, events, checks }) {
+  // The extension starts every thread paginated so `thread/revert` works; history behaves
+  // differently under that mode, so the scenario has to match it.
+  const threadId = await startRootTurn(client, MARK.restoreParent, {
+    historyMode: 'paginated',
+  });
+  await waitFor(
+    events,
+    (n) => n.method === 'turn/completed' && n.params?.threadId === threadId,
+    'the restore turn to finish',
+  );
+
+  // Exactly the request the extension makes while restoring a remembered session.
+  const resumed = await client.request(
+    'thread/resume',
+    { threadId, initialTurnsPage: INITIAL_TURNS_PAGE },
+    60_000,
+  );
+
+  const turns = turnsToReplay(resumed.initialTurnsPage, resumed.thread?.turns);
+  checks.check('restore: resume returns the thread history', turns.length > 0, `${turns.length} 轮`);
+
+  const emitted = [];
+  replayTurns(turns, {
+    emit: (message) => emitted.push(message),
+    recordChange: () => {},
+    changeKind: patchChangeKind,
+    diffStat,
+  });
+
+  const textOf = (type) =>
+    emitted
+      .filter((m) => m.type === type)
+      .map((m) => m.text)
+      .join('');
+  checks.check(
+    'restore: the prompt comes back as a user bubble',
+    textOf('you').includes(MARK.restoreParent),
+    textOf('you').slice(0, 60),
+  );
+  checks.check(
+    'restore: the assistant reply comes back',
+    textOf('delta').includes(RESTORED_ANSWER),
+    textOf('delta').slice(0, 60),
+  );
+  checks.check(
+    'restore: each turn still offers its revert checkpoint',
+    emitted.filter((m) => m.type === 'checkpoint').length === turns.length,
+    `${emitted.filter((m) => m.type === 'checkpoint').length} 个 checkpoint / ${turns.length} 轮`,
+  );
+
+  // Commands and patches are mapped by the same replay code but are awkward to provoke
+  // through a scripted model, so the mapping is checked directly.
+  const recorded = [];
+  const fromItems = [];
+  replayTurns(
+    [
+      {
+        id: 'synthetic-turn',
+        itemsView: 'full',
+        items: [
+          {
+            type: 'commandExecution',
+            id: 'c1',
+            command: 'echo replayed',
+            aggregatedOutput: 'replayed\n',
+            exitCode: 0,
+          },
+          {
+            type: 'fileChange',
+            id: 'f1',
+            changes: [
+              {
+                path: 'src/touched.ts',
+                kind: { type: 'update' },
+                diff: '@@ -1 +1 @@\n-old\n+new\n',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    {
+      emit: (message) => fromItems.push(message),
+      recordChange: (change) => recorded.push(change),
+      changeKind: patchChangeKind,
+      diffStat,
+    },
+  );
+  const toolText = fromItems
+    .filter((m) => m.type === 'tool')
+    .map((m) => m.text)
+    .join('');
+  checks.check(
+    'restore: a command replays with its output and exit status',
+    toolText.includes('$ echo replayed') && toolText.includes('replayed') && toolText.includes('[ok]'),
+    toolText.replace(/\s+/g, ' ').trim(),
+  );
+  const fileMessage = fromItems.find((m) => m.type === 'files');
+  checks.check(
+    'restore: a file change replays and is re-registered for diff and undo',
+    fileMessage?.items?.[0]?.path === 'src/touched.ts' &&
+      recorded.length === 1 &&
+      recorded[0].diff.includes('+new'),
+    `${JSON.stringify(fileMessage?.items?.[0])} recorded=${recorded.length}`,
+  );
+}
+
 const SCENARIOS = [
   ['basics', scenarioBasics],
   ['fanOut', scenarioFanOut],
+  ['restore', scenarioRestore],
   ['nested', scenarioNested],
   ['eviction', scenarioEviction],
   ['approval', scenarioApproval],

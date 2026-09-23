@@ -319,6 +319,14 @@ export default function App() {
     );
   }, []);
 
+  // A non-v2 engine never emits agent activity, so the block that carries the upgrade
+  // notice has to be created from the capability probe rather than from the agent tree.
+  useEffect(() => {
+    if (activeId && multiAgent && multiAgent.version !== 'v2') {
+      ensureAgentsBlock(activeId);
+    }
+  }, [activeId, multiAgent, ensureAgentsBlock]);
+
   const commitRename = (threadId: string) => {
     const title = editTitle.trim();
     if (title) {
@@ -420,9 +428,8 @@ export default function App() {
           </div>
         );
       case 'agents': {
-        if (agents.length === 0) {
-          return null;
-        }
+        // The engine notice has to win over the empty check: on a non-v2 engine no agent
+        // ever arrives, and returning null would leave the panel silently blank.
         if (multiAgent && multiAgent.version !== 'v2') {
           return (
             <div key={b.id} className="agent-list">
@@ -435,6 +442,9 @@ export default function App() {
               </div>
             </div>
           );
+        }
+        if (agents.length === 0) {
+          return null;
         }
         return (
           <div key={b.id} className="agent-list">

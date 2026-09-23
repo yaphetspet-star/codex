@@ -20,6 +20,7 @@ import {
 } from './protocol/capabilities';
 import { diffStat, patchChangeKind } from './protocol/items';
 import { asServerNotification } from './protocol/notifications';
+import { INITIAL_TURNS_PAGE, replayTurns, turnsToReplay } from './history/replay';
 
 let client: AppServerClient | undefined;
 let view: vscode.WebviewView | undefined;
@@ -190,7 +191,7 @@ function handleNotification(raw: Notification) {
       // Unlike `item/*`, this reaches the connection even for threads it never subscribed to,
       // so an agent that was evicted from the live set still reports accurate liveness.
       if (agents.applyStatus(n.params.threadId, n.params.status)) {
-        postAgentTree();
+        postAgentTree(n.params.threadId);
       }
       break;
     case 'error':
@@ -244,7 +245,7 @@ function onItemCompleted(threadId: string, item: ThreadItem) {
       // (`emit_sub_agent_activity`), so handling only the completed half processes each
       // activity exactly once without losing any latency.
       if (agents.recordActivity(threadId, item)) {
-        postAgentTree();
+        postAgentTree(threadId);
       }
       void attachAgent(item.agentThreadId);
       break;
@@ -265,7 +266,7 @@ async function attachAgent(threadId: string) {
     return;
   }
   agents.applyThread(attached.thread, attached.attachment);
-  postAgentTree();
+  postAgentTree(threadId);
 }
 
 /** Unsubscribes from every agent below a thread and forgets them. */
@@ -275,14 +276,22 @@ async function releaseAgentsUnder(rootThreadId: string) {
   agents.removeTree(rootThreadId);
 }
 
-function postAgentTree() {
-  if (!activeThreadId) {
+/**
+ * Publishes the agent tree for the session that owns `threadId`.
+ *
+ * Agents belong to a thread, not to whichever tab happens to be focused. Deriving the root
+ * from the thread the event came from also means a restored session publishes its agents
+ * even before the user has touched a tab.
+ */
+function postAgentTree(threadId: string | undefined) {
+  if (!threadId) {
     return;
   }
+  const rootThreadId = agents.rootThreadIdFor(threadId);
   post({
     type: 'agentTree',
-    rootThreadId: activeThreadId,
-    nodes: agents.descendantsOf(activeThreadId),
+    rootThreadId,
+    nodes: agents.descendantsOf(rootThreadId),
   });
 }
 
@@ -609,7 +618,11 @@ async function restoreSessions(): Promise<boolean> {
   let restored = false;
   for (const [threadId, info] of wanted) {
     try {
-      await client!.request('thread/resume', { threadId }, 60_000);
+      const res = await client!.request(
+        'thread/resume',
+        { threadId, initialTurnsPage: INITIAL_TURNS_PAGE },
+        60_000,
+      );
       openSessions.set(threadId, { model: info.model, provider: info.provider });
       sessionTitles.set(threadId, info.title);
       post({
@@ -619,6 +632,10 @@ async function restoreSessions(): Promise<boolean> {
         model: info.model,
         provider: info.provider,
       });
+      replayThread(threadId, res);
+      // The webview selects each tab as it opens, so the host has to track the same one.
+      // Leaving this unset left the extension with no active thread at all after a restart.
+      activeThreadId = threadId;
       restored = true;
     } catch {
       openSessions.delete(threadId);
@@ -627,6 +644,33 @@ async function restoreSessions(): Promise<boolean> {
   }
   persistSessions();
   return restored;
+}
+
+/**
+ * Puts a resumed thread's transcript back on screen.
+ *
+ * Without this a restart restores the tab but not the conversation, which reads as the
+ * history having been lost. File changes are re-registered along the way so diff and undo
+ * keep working on a thread the extension has only just re-learned about.
+ */
+function replayThread(threadId: string, resumeResponse: any): void {
+  const turns = turnsToReplay(resumeResponse?.initialTurnsPage, resumeResponse?.thread?.turns);
+  if (!turns.length) {
+    return;
+  }
+  const rootThreadId = agents.rootThreadIdFor(threadId);
+  let changes = fileChanges.get(rootThreadId);
+  if (!changes) {
+    changes = new Map();
+    fileChanges.set(rootThreadId, changes);
+  }
+  const target = changes;
+  replayTurns(turns, {
+    emit: (message) => notifyThread(threadId, message),
+    recordChange: (change) => target.set(change.path, change),
+    changeKind: patchChangeKind,
+    diffStat,
+  });
 }
 
 /** Re-spawn app-server and resume the active thread after a crash. */
@@ -732,7 +776,7 @@ async function ensureClient() {
     (method, params, timeoutMs) => c.request(method, params, timeoutMs),
     (threadId) => {
       agents.setAttachment(threadId, 'detached');
-      postAgentTree();
+      postAgentTree(threadId);
     },
   );
   return c;
@@ -1116,9 +1160,12 @@ async function probeMultiAgent() {
   if (!client) {
     return;
   }
+  // The model the session actually runs decides whether nested spawning is available;
+  // `pendingModel` is only the picker's default and is empty when config.toml supplies it.
+  const model = openSessions.get(activeThreadId ?? '')?.model || pendingModel;
   const capability = await detectMultiAgent(
     (method, params, timeoutMs) => client!.request(method, params, timeoutMs),
-    pendingModel,
+    model,
   );
   multiAgent = capability;
   post({ type: 'multiAgent', ...capability });
@@ -1170,7 +1217,7 @@ async function handleMessage(msg: any) {
         }
         case 'switchThread':
           activeThreadId = String(msg.threadId ?? '') || undefined;
-          postAgentTree();
+          postAgentTree(activeThreadId);
           break;
         case 'closeThread': {
           const tid = String(msg.threadId ?? '');
