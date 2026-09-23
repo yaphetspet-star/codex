@@ -6,6 +6,7 @@ use crate::context::ContextualUserFragment;
 use crate::context::InterAgentMessage;
 use crate::context::InterAgentMessageType;
 use crate::function_tool::FunctionCallError;
+use crate::tools::context::ToolCallSource;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
 use crate::tools::context::ToolPayload;
@@ -55,31 +56,65 @@ pub(crate) async fn emit_sub_agent_activity(
     session.emit_turn_item_completed(turn, item).await;
 }
 
+/// How an inter-agent payload is carried to the recipient.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum InterAgentPayloadFormat {
+    /// The payload rides in an `encrypted_content` item, invisible in the rendered message.
+    Encrypted,
+    /// The payload is rendered into the message body the recipient's model reads.
+    Plaintext,
+}
+
+impl InterAgentPayloadFormat {
+    /// Chooses a carrier the recipient's model can actually read.
+    ///
+    /// `encrypted_content` items only survive the round trip on the OpenAI Responses API;
+    /// [`ModelClient`](crate::client::ModelClient) clears encrypted function args for every
+    /// other provider. A third-party recipient therefore receives a task whose body is
+    /// empty and answers as though nothing had been assigned, so those providers get the
+    /// payload spelled out in the message instead.
+    pub(crate) fn for_turn(
+        source: &ToolCallSource,
+        turn: &crate::session::turn_context::TurnContext,
+    ) -> Self {
+        match source {
+            ToolCallSource::DirectPlaintextMessage => Self::Plaintext,
+            ToolCallSource::Direct | ToolCallSource::CodeMode { .. } => {
+                if turn.provider.info().is_openai() {
+                    Self::Encrypted
+                } else {
+                    Self::Plaintext
+                }
+            }
+        }
+    }
+}
+
 fn communication_from_tool_message(
     author: AgentPath,
     recipient: AgentPath,
     message: String,
-    source: &crate::tools::context::ToolCallSource,
+    format: InterAgentPayloadFormat,
     trigger_turn: bool,
 ) -> InterAgentCommunication {
-    if !matches!(
-        source,
-        crate::tools::context::ToolCallSource::DirectPlaintextMessage
-    ) {
-        return InterAgentCommunication::new_encrypted(
+    match format {
+        InterAgentPayloadFormat::Encrypted => InterAgentCommunication::new_encrypted(
             author,
             recipient,
             Vec::new(),
             message,
             trigger_turn,
-        );
+        ),
+        InterAgentPayloadFormat::Plaintext => {
+            let message_type = if trigger_turn {
+                InterAgentMessageType::NewTask
+            } else {
+                InterAgentMessageType::Message
+            };
+            let content =
+                InterAgentMessage::new(message_type, recipient.clone(), author.clone(), message)
+                    .render();
+            InterAgentCommunication::new(author, recipient, Vec::new(), content, trigger_turn)
+        }
     }
-    let message_type = if trigger_turn {
-        InterAgentMessageType::NewTask
-    } else {
-        InterAgentMessageType::Message
-    };
-    let content =
-        InterAgentMessage::new(message_type, recipient.clone(), author.clone(), message).render();
-    InterAgentCommunication::new(author, recipient, Vec::new(), content, trigger_turn)
 }

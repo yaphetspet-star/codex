@@ -100,7 +100,7 @@ pub(super) async fn handle_message_string_tool(
         author,
         receiver_agent_path.clone(),
         message,
-        &source,
+        InterAgentPayloadFormat::for_turn(&source, turn.as_ref()),
         mode.trigger_turn(),
     );
     let kind = match mode {

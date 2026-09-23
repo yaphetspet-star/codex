@@ -25,8 +25,17 @@ export const APPROVAL_DECISIONS: Record<string, string> = {
   applyPatchApproval: 'approved',
 };
 
-/** Locate the newest codex.exe under the per-user bin directory. */
+/**
+ * Locate the newest codex.exe under the per-user bin directory.
+ *
+ * `CODEX_BIN` overrides it, which is how the e2e suites run against a locally built
+ * engine rather than the installed release.
+ */
 export function findCodexBin(): string {
+  const override = process.env.CODEX_BIN;
+  if (override) {
+    return override;
+  }
   const root = path.join(
     process.env.LOCALAPPDATA || '',
     'OpenAI',

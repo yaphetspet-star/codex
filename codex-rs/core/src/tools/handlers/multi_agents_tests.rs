@@ -1072,6 +1072,73 @@ async fn multi_agent_v2_spawn_returns_path_and_send_message_accepts_relative_pat
     }));
 }
 
+/// A third-party provider cannot read `encrypted_content`, so the task has to be spelled out.
+///
+/// `ModelClient` clears encrypted function args for every non-OpenAI provider. Sending the
+/// task that way leaves the recipient with an empty payload, which it answers as though no
+/// task had been assigned.
+#[tokio::test]
+async fn multi_agent_v2_spawn_sends_a_readable_task_to_a_non_openai_provider() {
+    let (mut session, mut turn) = make_session_and_context().await;
+    let manager = thread_manager();
+    let root = manager
+        .start_thread(StartThreadOptions::new((*turn.config).clone()))
+        .await
+        .expect("root thread should start");
+    session.services.agent_control = manager.agent_control();
+    session.thread_id = root.thread_id;
+
+    let mut config = (*turn.config).clone();
+    config
+        .features
+        .enable(Feature::MultiAgentV2)
+        .expect("test config should allow feature update");
+    let provider_info =
+        built_in_model_providers(/*openai_base_url*/ None)["ollama"].clone();
+    config.model_provider_id = "ollama".to_string();
+    config.model_provider = provider_info.clone();
+    set_turn_config(&mut turn, config);
+    turn.provider = create_model_provider(provider_info, turn.auth_manager.clone());
+
+    let session = Arc::new(session);
+    let turn = Arc::new(turn);
+    SpawnAgentHandlerV2::default()
+        .handle(invocation(
+            session.clone(),
+            turn.clone(),
+            "spawn_agent",
+            function_payload(json!({
+                "message": "count the files",
+                "task_name": "test_process"
+            })),
+        ))
+        .await
+        .expect("spawn_agent should succeed");
+
+    let child_thread_id = session
+        .services
+        .agent_control
+        .resolve_agent_reference(session.thread_id, &turn.session_source, "test_process")
+        .await
+        .expect("relative path should resolve");
+    let communication = manager
+        .captured_ops()
+        .into_iter()
+        .find_map(|(id, op)| match op {
+            Op::InterAgentCommunication { communication, .. } if id == child_thread_id => {
+                Some(communication)
+            }
+            _ => None,
+        })
+        .expect("spawn should send the child a communication");
+
+    assert_eq!(communication.encrypted_content, None);
+    assert_eq!(
+        communication.content,
+        "Message Type: NEW_TASK\nTask name: /root/test_process\nSender: /root\nPayload:\ncount the files"
+    );
+}
+
 #[tokio::test]
 async fn multi_agent_v2_spawn_rejects_legacy_fork_context() {
     let (mut session, mut turn) = make_session_and_context().await;

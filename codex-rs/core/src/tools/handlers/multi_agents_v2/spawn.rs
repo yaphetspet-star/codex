@@ -173,7 +173,7 @@ async fn handle_spawn_agent(
         author,
         new_agent_path.clone(),
         message,
-        &source,
+        InterAgentPayloadFormat::for_turn(&source, turn),
         /*trigger_turn*/ true,
     );
     let context = AgentCommunicationContext::new(AgentCommunicationKind::Spawn, session.thread_id);
