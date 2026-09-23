@@ -41,7 +41,12 @@ const MARK = {
   approvalChild: 'E2E-approval-child',
   refocusParent: 'E2E-refocus-parent',
   refocusChild: 'E2E-refocus-child',
+  fanOutParent: 'E2E-fanout-parent',
+  fanOutChild: 'E2E-fanout-child',
 };
+
+/** Agents spawned together by the fan-out scenario. */
+const FAN_OUT_NAMES = ['alpha', 'beta', 'gamma'];
 
 /** Long enough that an agent's turn is reliably still running while the test inspects it. */
 const HOLD_MS = 6000;
@@ -87,6 +92,14 @@ const SCRIPTS = {
     reply('r-refocus-2', 'delegated to the note taker'),
   ],
   [MARK.refocusChild]: [reply('r-refocus-c', 'notes written')],
+
+  [MARK.fanOutParent]: [
+    ...FAN_OUT_NAMES.map((name) =>
+      spawn(`r-fanout-${name}`, `call-fanout-${name}`, name, MARK.fanOutChild),
+    ),
+    reply('r-fanout-done', 'all three delegated'),
+  ],
+  [MARK.fanOutChild]: [{ events: reply('r-fanout-c', 'child done'), delayMs: HOLD_MS }],
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -464,8 +477,64 @@ async function scenarioRefocus({ client, events, checks }) {
   await subscriptions.detachAll();
 }
 
+/**
+ * Three agents spawned in one turn must be three nodes, not more.
+ *
+ * The other scenarios hand the registry one activity at a time, which cannot reveal an
+ * identity bug. This one replays the whole notification stream, because that is what the
+ * extension does: the engine emits four `subAgentActivity` notifications per agent —
+ * `started` and `completed` kinds, each as both `item/started` and `item/completed` — and
+ * every one of them must land on the same node.
+ */
+async function scenarioFanOut({ client, events, checks }) {
+  const parentThreadId = await startRootTurn(client, MARK.fanOutParent);
+  for (const name of FAN_OUT_NAMES) {
+    await waitForSpawn(events, parentThreadId, name);
+  }
+
+  // `events` accumulates across scenarios, so narrow to this parent's own agents.
+  const activities = events.filter(
+    (e) => e.params?.item?.type === 'subAgentActivity' && e.params.threadId === parentThreadId,
+  );
+  const uniqueIds = new Set(activities.map((e) => e.params.item.agentThreadId));
+  checks.check(
+    'fan-out: each agent is reported under one thread id',
+    uniqueIds.size === FAN_OUT_NAMES.length,
+    `${activities.length} 条通知，${uniqueIds.size} 个 threadId`,
+  );
+
+  // Exactly what extension.ts feeds the registry.
+  const agents = new AgentRegistry();
+  for (const e of activities) {
+    if (e.method === 'item/completed') {
+      agents.recordActivity(e.params.threadId, e.params.item);
+    }
+  }
+  const paths = agents
+    .descendantsOf(parentThreadId)
+    .map((n) => n.agentPath)
+    .sort();
+  checks.check(
+    'fan-out: the tree holds one node per agent',
+    paths.length === FAN_OUT_NAMES.length,
+    paths.join(' | '),
+  );
+
+  // Replaying every half must not change the outcome; identity is the thread id, not the event.
+  const replayed = new AgentRegistry();
+  for (const e of activities) {
+    replayed.recordActivity(e.params.threadId, e.params.item);
+  }
+  checks.check(
+    'fan-out: replaying both item halves does not duplicate nodes',
+    replayed.descendantsOf(parentThreadId).length === paths.length,
+    `${replayed.descendantsOf(parentThreadId).length} vs ${paths.length}`,
+  );
+}
+
 const SCENARIOS = [
   ['basics', scenarioBasics],
+  ['fanOut', scenarioFanOut],
   ['nested', scenarioNested],
   ['eviction', scenarioEviction],
   ['approval', scenarioApproval],
