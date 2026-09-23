@@ -109,7 +109,8 @@
     "watch:webview": "vite build --watch",
     "typecheck": "tsc -p ./ --noEmit && tsc -p webview/tsconfig.json",
     "test:e2e": "npm run compile && node e2e/multi-agent.js",
-    "test:ui": "npm run build:webview && playwright test",
+    "test:ui": "npm run build:webview && playwright test --project=assert",
+    "ui:review": "npm run build:webview && playwright test --project=review",
     "test": "npm run test:e2e && npm run test:ui",
     "ui-sandbox": "node e2e/ui-sandbox.js",
     "build": "npm run build:webview && npm run compile"

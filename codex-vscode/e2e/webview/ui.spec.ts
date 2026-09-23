@@ -1,7 +1,7 @@
 /*
  * Panel behaviour under multi-agent load.
  *
- * These cover the objectively checkable half of `docs/manual-ui-test.md`; the cases left for
+ * These cover the objectively checkable half of `docs/ui-review.md`; the cases left for
  * a person are the ones that ask how something feels, not what it does.
  */
 import { expect, test } from '@playwright/test';

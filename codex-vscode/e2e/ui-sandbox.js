@@ -10,7 +10,7 @@
  *   2. F5 in VS Code -> "Run Extension (mock model)"
  *   3. Type one of the commands below into the Codex panel.
  *
- * See docs/manual-ui-test.md for the test cases.
+ * See docs/ui-review.md for the test cases.
  */
 const {
   evAssistantMessage,
