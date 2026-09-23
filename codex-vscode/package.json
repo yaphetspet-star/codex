@@ -108,6 +108,7 @@
     "build:webview": "vite build",
     "watch:webview": "vite build --watch",
     "typecheck": "tsc -p ./ --noEmit && tsc -p webview/tsconfig.json",
+    "preflight": "node e2e/preflight.js",
     "test:e2e": "npm run compile && node e2e/multi-agent.js",
     "test:ui": "npm run build:webview && playwright test --project=assert",
     "ui:review": "npm run build:webview && playwright test --project=review",
