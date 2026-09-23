@@ -10,13 +10,14 @@
       "preLaunchTask": "npm: build"
     },
     {
-      // Requires `node e2e/ui-sandbox.js` to be running; see docs/manual-ui-test.md.
+      // Starts the scripted model server itself and waits for the port before launching, so
+      // the panel cannot come up pointing at nothing. See docs/ui-review.md.
       "name": "Run Extension (mock model)",
       "type": "extensionHost",
       "request": "launch",
       "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
       "outFiles": ["${workspaceFolder}/out/**/*.js"],
-      "preLaunchTask": "npm: build",
+      "preLaunchTask": "build and start mock model",
       "env": { "CODEX_HOME": "${userHome}/.codex-ui-sandbox" }
     }
   ]

@@ -121,15 +121,17 @@ npm run ui:review
 3. **输入框归属**：在 agent 的 tab 上打字，消息目前落在主线程。
    这是个**未决的设计问题**，需要产品判断，不是 bug。
 
-人要跑这三项的话：
+人要跑这三项的话：VS Code 里打开 `codex-vscode`，按 <kbd>F5</kbd> 选
+**Run Extension (mock model)**，这一条就够了——它会自己构建、起脚本化模型服务、
+等端口真正可用之后才拉起扩展宿主。`CODEX_HOME` 指向 `~/.codex-ui-sandbox`，
+不碰真实配置，不花额度。
 
-```bash
-node e2e/ui-sandbox.js        # 保持运行
-```
-
-VS Code 里打开 `codex-vscode`，按 <kbd>F5</kbd> 选 **Run Extension (mock model)**。
-`CODEX_HOME` 会指向 `~/.codex-ui-sandbox`，不碰真实配置，不花额度。
 在面板里发 `/one`（1 个 agent）、`/many`（10 个）、`/slow`（挂住不结束）、`/nest`（嵌套）。
+发别的会收到一条列出可用指令的回复——**收到这条说明链路是通的**。
+
+如果发消息后长时间毫无反应，是模型服务没起来：面板的配置指向
+`http://127.0.0.1:4571`，那里没人接的话，一轮对话会静默等满 180 秒超时才报错。
+用 `node e2e/ui-sandbox.js` 手动起一个即可确认。
 
 ---
 

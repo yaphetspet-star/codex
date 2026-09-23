@@ -166,15 +166,17 @@ function route(body) {
 }
 
 async function main() {
+  // The launch configuration's problem matcher waits for this line and the one after the
+  // server binds, so it can hold the extension host back until the port is actually open.
+  log('Starting mock model server');
   const { port } = await startMockModelServer(route, PORT);
   // The default concurrency budget is 4 threads including the root, which caps `/many` at
   // three agents -- too few to push the tab strip or the subscription limit.
   const home = makeCodexHome(port, HOME_DIR, ['max_concurrent_threads_per_session = 14']);
-  log(`Mock model listening on http://127.0.0.1:${port}`);
   log(`CODEX_HOME = ${home}`);
-  log(`\nNow press F5 in VS Code and pick "Run Extension (mock model)".`);
   log(`Commands you can type in the Codex panel:${COMMANDS}`);
-  log('Ctrl+C to stop.\n');
+  log('Ctrl+C to stop.');
+  log(`Mock model listening on http://127.0.0.1:${port}`);
 }
 
 main().catch((err) => {

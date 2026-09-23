@@ -6,6 +6,37 @@
       "script": "build",
       "group": "build",
       "problemMatcher": "$tsc"
+    },
+    {
+      // Started for you by the "Run Extension (mock model)" launch configuration. Leaving it
+      // to be started by hand fails silently: the panel's config points at this port, so a
+      // message sent with nothing listening just waits out the turn timeout saying nothing.
+      "label": "mock model server",
+      "type": "shell",
+      "command": "node e2e/ui-sandbox.js",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^(sandbox failed to start): (.*)$",
+          "severity": 1,
+          "message": 2
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^Starting mock model",
+          "endsPattern": "^Mock model listening on"
+        }
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "build and start mock model",
+      "dependsOn": ["npm: build", "mock model server"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
     }
   ]
 }
