@@ -1,0 +1,7 @@
+node_modules/
+out/
+webview/dist/
+*.vsix
+test-results/
+playwright-report/
+e2e/webview/screenshots/

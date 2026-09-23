@@ -1,0 +1,132 @@
+{
+  "name": "codex-vscode",
+  "publisher": "local",
+  "displayName": "Codex (app-server)",
+  "description": "Codex agent panel for VS Code, powered by codex app-server",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onView:codexChat"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codex",
+          "title": "Codex",
+          "icon": "media/codex.svg"
+        }
+      ]
+    },
+    "views": {
+      "codex": [
+        {
+          "type": "webview",
+          "id": "codexChat",
+          "name": "Codex"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "codex.newThread",
+          "group": "navigation@1",
+          "when": "view == codexChat"
+        },
+        {
+          "command": "codex.settings",
+          "group": "navigation@2",
+          "when": "view == codexChat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codex.open",
+        "title": "Codex: Open Chat"
+      },
+      {
+        "command": "codex.newThread",
+        "title": "Codex: New Session",
+        "icon": "$(add)"
+      },
+      {
+        "command": "codex.settings",
+        "title": "Codex: Settings",
+        "icon": "$(settings-gear)"
+      }
+    ],
+    "configuration": {
+      "title": "Codex",
+      "properties": {
+        "codex.binPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the codex executable. Leave empty to auto-detect."
+        },
+        "codex.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model id. Leave empty to use the value from ~/.codex/config.toml."
+        },
+        "codex.modelProvider": {
+          "type": "string",
+          "default": "",
+          "description": "Provider id. Leave empty to use the value from ~/.codex/config.toml."
+        },
+        "codex.preferSecondarySideBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "首次打开时自动把面板移到右侧辅助侧边栏。设为 false 保持默认左侧。"
+        },
+        "codex.approvalPolicy": {
+          "type": "string",
+          "enum": [
+            "on-request",
+            "never",
+            "untrusted"
+          ],
+          "default": "on-request",
+          "enumDescriptions": [
+            "默认：模型需要时弹窗询问是否执行命令",
+            "不再询问，命令直接执行，失败结果返回给模型",
+            "仅对未信任的项目询问"
+          ],
+          "description": "命令执行审批策略。设为 never 可彻底消除授权弹窗（命令仍在沙箱内执行）。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build:webview && npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "build:webview": "vite build",
+    "watch:webview": "vite build --watch",
+    "typecheck": "tsc -p ./ --noEmit && tsc -p webview/tsconfig.json",
+    "test:e2e": "npm run compile && node e2e/multi-agent.js",
+    "test:ui": "npm run build:webview && playwright test",
+    "test": "npm run test:e2e && npm run test:ui",
+    "ui-sandbox": "node e2e/ui-sandbox.js",
+    "build": "npm run build:webview && npm run compile"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^20.11.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.85.0",
+    "@vitejs/plugin-react": "^4.2.0",
+    "@vscode/vsce": "^4.0.0",
+    "highlight.js": "^11.9.0",
+    "marked": "^12.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.2.0"
+  }
+}
