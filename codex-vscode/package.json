@@ -114,7 +114,9 @@
     "ui:review": "npm run build:webview && playwright test --project=review",
     "test": "npm run test:e2e && npm run test:ui",
     "ui-sandbox": "node e2e/ui-sandbox.js",
-    "build": "npm run build:webview && npm run compile"
+    "build": "npm run build:webview && npm run compile",
+    "package": "vsce package --no-dependencies --allow-missing-repository --out codex-vscode.vsix",
+    "install-local": "npm run package && code --install-extension codex-vscode.vsix --force"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

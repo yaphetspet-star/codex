@@ -26,14 +26,18 @@ npm run watch          # 监听扩展端 TS
 npm run watch:webview  # 监听 webview
 ```
 
-## 打包
+## 安装到自己的 VS Code
 
 ```bash
-npm install -g @vscode/vsce   # 或用 npx
-vsce package                  # 产出 codex-vscode-<version>.vsix
+npm run install-local   # 构建 + 打包 + 覆盖安装，然后重启 VS Code
 ```
 
-在 VS Code 中选择「从 VSIX 安装」即可使用。
+**装过一次之后，改源码不会影响它。** 已安装的扩展自带一份打包进去的 webview
+bundle，`npm run build` 和按 F5 都碰不到它——F5 起的是独立的扩展开发宿主，
+和已安装的那份是两个东西。改完要在日常使用的窗口里看到效果，必须重跑上面这条命令，
+并且**完全重启 VS Code**（重载窗口不会换扩展版本）。
+
+只想打包不安装用 `npm run package`，产出 `codex-vscode.vsix`。
 
 ## 配置项
 

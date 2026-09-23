@@ -138,6 +138,11 @@ npm run ui:review
 3. **输入框归属**：在 agent 的 tab 上打字，消息目前落在主线程。
    这是个**未决的设计问题**，需要产品判断，不是 bug。
 
+> 注意别和**已安装**的扩展搞混。如果你平时是从 `npm run install-local` 装的那份在用，
+> 它自带打包进去的 webview bundle，改源码、重建、按 F5 都不会改变它的行为；
+> 要更新那一份得重跑 `npm run install-local` 并完全重启 VS Code。
+> 下面说的是独立的扩展开发宿主，和已安装的那份互不影响。
+
 人要跑这三项的话：VS Code 里打开 `codex-vscode`，按 <kbd>F5</kbd> 选
 **Run Extension (mock model)**，这一条就够了——它会自己构建、起脚本化模型服务、
 等端口真正可用之后才拉起扩展宿主。`CODEX_HOME` 指向 `~/.codex-ui-sandbox`，
