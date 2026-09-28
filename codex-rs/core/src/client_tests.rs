@@ -42,6 +42,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::CodexErrorDetails;
+use codex_protocol::models::AgentMessageInputContent;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::ExecutedToolCall;
@@ -252,6 +253,133 @@ fn responses_request_limits_raw_tool_metadata_to_resolved_first_party_https_endp
             assert_eq!(prompt.input, vec![output.clone()]);
         }
     }
+    Ok(())
+}
+
+#[test]
+fn responses_request_rewrites_plaintext_agent_message_for_non_openai_provider() -> anyhow::Result<()>
+{
+    let client = test_model_client(SessionSource::Cli);
+    let agent_message = ResponseItem::AgentMessage {
+        id: None,
+        author: "/root".to_string(),
+        recipient: "/root/child".to_string(),
+        content: vec![AgentMessageInputContent::InputText {
+            text: "Message Type: NEW_TASK\nPayload:\nDo the thing.".to_string(),
+        }],
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let prompt = Prompt {
+        input: vec![agent_message],
+        ..Default::default()
+    };
+    let responses_metadata = test_responses_metadata_for_client(
+        &client,
+        /*turn_id*/ None,
+        format!("{}:0", client.state.thread_id),
+        /*parent_thread_id*/ None,
+        TestCodexResponsesRequestKind::Turn,
+    );
+    let request = client.build_responses_request(
+        &prompt,
+        &test_model_info(),
+        /*effort*/ None,
+        codex_protocol::config_types::ReasoningSummary::None,
+        /*service_tier*/ None,
+        &responses_metadata,
+    )?;
+    assert_eq!(
+        request.input.as_slice(),
+        [ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "Message Type: NEW_TASK\nPayload:\nDo the thing.".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }]
+    );
+    Ok(())
+}
+
+#[test]
+fn responses_request_preserves_agent_message_for_openai_provider() -> anyhow::Result<()> {
+    let provider =
+        ModelProviderInfo::create_openai_provider(Some("https://api.openai.com/v1".to_string()));
+    let mut client = test_model_client(SessionSource::Cli);
+    Arc::get_mut(&mut client.state)
+        .expect("test client should have unique session state")
+        .provider = create_model_provider(provider, /*auth_manager*/ None);
+    let agent_message = ResponseItem::AgentMessage {
+        id: None,
+        author: "/root".to_string(),
+        recipient: "/root/child".to_string(),
+        content: vec![AgentMessageInputContent::InputText {
+            text: "Message Type: NEW_TASK\nPayload:\nDo the thing.".to_string(),
+        }],
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let prompt = Prompt {
+        input: vec![agent_message.clone()],
+        ..Default::default()
+    };
+    let responses_metadata = test_responses_metadata_for_client(
+        &client,
+        /*turn_id*/ None,
+        format!("{}:0", client.state.thread_id),
+        /*parent_thread_id*/ None,
+        TestCodexResponsesRequestKind::Turn,
+    );
+    let request = client.build_responses_request(
+        &prompt,
+        &test_model_info(),
+        /*effort*/ None,
+        codex_protocol::config_types::ReasoningSummary::None,
+        /*service_tier*/ None,
+        &responses_metadata,
+    )?;
+    assert_eq!(request.input.as_slice(), [agent_message]);
+    Ok(())
+}
+
+#[test]
+fn responses_request_keeps_encrypted_agent_message_for_non_openai_provider() -> anyhow::Result<()> {
+    let client = test_model_client(SessionSource::Cli);
+    let agent_message = ResponseItem::AgentMessage {
+        id: None,
+        author: "/root".to_string(),
+        recipient: "/root/child".to_string(),
+        content: vec![
+            AgentMessageInputContent::InputText {
+                text: "Message Type: NEW_TASK".to_string(),
+            },
+            AgentMessageInputContent::EncryptedContent {
+                encrypted_content: "ciphertext".to_string(),
+            },
+        ],
+        internal_chat_message_metadata_passthrough: None,
+    };
+    let prompt = Prompt {
+        input: vec![agent_message.clone()],
+        ..Default::default()
+    };
+    let responses_metadata = test_responses_metadata_for_client(
+        &client,
+        /*turn_id*/ None,
+        format!("{}:0", client.state.thread_id),
+        /*parent_thread_id*/ None,
+        TestCodexResponsesRequestKind::Turn,
+    );
+    let request = client.build_responses_request(
+        &prompt,
+        &test_model_info(),
+        /*effort*/ None,
+        codex_protocol::config_types::ReasoningSummary::None,
+        /*service_tier*/ None,
+        &responses_metadata,
+    )?;
+    assert_eq!(request.input.as_slice(), [agent_message]);
     Ok(())
 }
 

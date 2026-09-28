@@ -81,7 +81,9 @@ use codex_protocol::auth::AuthMode;
 use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
+use codex_protocol::models::ContentItem;
 use codex_protocol::models::ResponseItem;
+use codex_protocol::models::plaintext_agent_message_content;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::protocol::AuthRecoveryEvent;
@@ -849,6 +851,20 @@ impl ModelClient {
                 } = item
                 {
                     *encrypted_function_args = None;
+                }
+                // Third-party Responses-compatible endpoints silently drop the
+                // Codex-specific `agent_message` item type, so inter-agent
+                // payloads must be delivered as plain user messages instead.
+                if let ResponseItem::AgentMessage { content, .. } = item
+                    && let Some(text) = plaintext_agent_message_content(content)
+                {
+                    *item = ResponseItem::Message {
+                        id: None,
+                        role: "user".to_string(),
+                        content: vec![ContentItem::InputText { text }],
+                        phase: None,
+                        internal_chat_message_metadata_passthrough: None,
+                    };
                 }
             }
         }

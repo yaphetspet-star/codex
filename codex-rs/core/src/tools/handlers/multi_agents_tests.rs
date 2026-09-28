@@ -1093,8 +1093,7 @@ async fn multi_agent_v2_spawn_sends_a_readable_task_to_a_non_openai_provider() {
         .features
         .enable(Feature::MultiAgentV2)
         .expect("test config should allow feature update");
-    let provider_info =
-        built_in_model_providers(/*openai_base_url*/ None)["ollama"].clone();
+    let provider_info = built_in_model_providers(/*openai_base_url*/ None)["ollama"].clone();
     config.model_provider_id = "ollama".to_string();
     config.model_provider = provider_info.clone();
     set_turn_config(&mut turn, config);
